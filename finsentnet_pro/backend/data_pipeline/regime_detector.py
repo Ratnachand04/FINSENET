@@ -1,5 +1,5 @@
 """
-FinSentNet Pro — Market Regime Detector
+FINSENT NET PRO — Market Regime Detector
 Identifies current market regime: BULL, BEAR, VOLATILE, TRANSITIONAL.
 Uses rolling statistical features and optional HMM.
 """

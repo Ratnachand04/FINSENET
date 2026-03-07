@@ -1,5 +1,5 @@
 """
-FinSentNet Pro — News Sentiment Engine
+FINSENT NET PRO — News Sentiment Engine
 FinBERT-based sentiment scoring for financial news headlines.
 Falls back to rule-based scoring when transformer is unavailable.
 """

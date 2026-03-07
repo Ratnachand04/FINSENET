@@ -1,5 +1,5 @@
 """
-FinSentNet Pro — Technical Indicators Engine
+FINSENT NET PRO — Technical Indicators Engine
 All indicators computed from raw OHLCV. No look-ahead contamination.
 Vectorized NumPy/Pandas operations throughout.
 """
@@ -18,7 +18,7 @@ class TechnicalIndicators:
     @staticmethod
     def compute_all(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Computes the full indicator suite used by FinSentNet price branch.
+        Computes the full indicator suite used by FINSENT price branch.
         Input: DataFrame with [Open, High, Low, Close, Volume]
         Output: DataFrame with ~35+ feature columns appended
         """

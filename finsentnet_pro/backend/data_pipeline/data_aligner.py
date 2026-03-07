@@ -1,5 +1,5 @@
 """
-FinSentNet Pro — Temporal Data Aligner
+FINSENT NET PRO — Temporal Data Aligner
 Ensures strict causal alignment between news and price data.
 No look-ahead contamination allowed.
 """
@@ -38,7 +38,7 @@ class DataAligner:
     ) -> np.ndarray:
         """
         Extract the last `window_size` rows as a normalized numpy array.
-        For feeding into the FinSentNet price branch.
+        For feeding into the FINSENT price branch.
         """
         if feature_cols is None:
             feature_cols = [

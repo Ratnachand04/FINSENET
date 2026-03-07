@@ -1,5 +1,5 @@
 """
-FinSentNet Pro — Market Data Fetcher
+FINSENT NET PRO — Market Data Fetcher
 Fetches OHLCV data from multiple sources with intelligent fallback.
 Supports: S&P500, NASDAQ, NYSE, BSE, NSE, Commodities, Crypto
 """
