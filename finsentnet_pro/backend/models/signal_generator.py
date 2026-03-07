@@ -1,6 +1,6 @@
 """
-FinSentNet Pro — Signal Generator
-Converts FinSentNet model outputs into actionable trade signals
+FINSENT NET PRO — Signal Generator
+Converts FINSENT model outputs into actionable trade signals
 with Kelly Criterion position sizing and risk-adjusted allocation.
 """
 
@@ -191,7 +191,7 @@ class SignalGenerator:
                             pred_return, price_data, confidence) -> List[str]:
         reasons = []
         latest = price_data.iloc[-1]
-        reasons.append(f"FinSentNet confidence: {confidence:.1f}% probability of {direction.value}")
+        reasons.append(f"FINSENT confidence: {confidence:.1f}% probability of {direction.value}")
         reasons.append(f"Predicted price movement: {'+' if pred_return > 0 else ''}{pred_return*100:.2f}%")
 
         if "RSI_14" in price_data.columns:
