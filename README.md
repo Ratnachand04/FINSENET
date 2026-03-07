@@ -1,3 +1,14 @@
+```
+███████╗██╗███╗   ██╗███████╗███████╗███╗   ██╗████████╗
+██╔════╝██║████╗  ██║██╔════╝██╔════╝████╗  ██║╚══██╔══╝
+█████╗  ██║██╔██╗ ██║███████╗█████╗  ██╔██╗ ██║   ██║
+██╔══╝  ██║██║╚██╗██║╚════██║██╔══╝  ██║╚██╗██║   ██║
+██║     ██║██║ ╚████║███████║███████╗██║ ╚████║   ██║
+╚═╝     ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝
+                 N E T   P R O
+      AI-Powered Quantitative Trading Intelligence
+```
+
 # FinSentNet — Financial Sentiment Network
 
 > Cross-modal deep learning framework fusing news sentiment with price dynamics via attention mechanisms for financial market prediction.
