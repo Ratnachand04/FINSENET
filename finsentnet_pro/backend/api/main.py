@@ -29,12 +29,17 @@ from portfolio.portfolio_optimizer import PortfolioOptimizer
 from portfolio.risk_engine import RiskEngine
 from portfolio.allocation_engine import AllocationEngine
 from backtesting.backtest_engine import BacktestEngine
+from training.trainer import ModelTrainer
+from training.predictor import LivePredictor
+from data_pipeline.live_data_service import LiveDataService
 
 # Route modules
 from api.routes import market_data as market_routes
 from api.routes import analysis as analysis_routes
 from api.routes import signals as signal_routes
 from api.routes import portfolio as portfolio_routes
+from api.routes import training as training_routes
+from api.routes import live as live_routes
 from api.websocket_handler import websocket_endpoint
 
 # ── Logging ──────────────────────────────────────────────
@@ -77,6 +82,9 @@ optimizer = PortfolioOptimizer()
 risk_engine = RiskEngine()
 allocator = AllocationEngine()
 backtester = BacktestEngine()
+trainer = ModelTrainer(model, fetcher, indicators)
+predictor = LivePredictor(model, fetcher, indicators, signal_gen, trainer)
+live_data_service = LiveDataService()
 
 # ── Initialize route modules with shared services ────────
 market_routes.init(fetcher, indicators)
@@ -86,12 +94,16 @@ analysis_routes.init(
 )
 signal_routes.init(signal_gen, fetcher, indicators)
 portfolio_routes.init(optimizer, risk_engine, allocator, kelly)
+training_routes.init(trainer, predictor)
+live_routes.init(live_data_service, predictor, trainer)
 
 # ── Register routers ─────────────────────────────────────
 app.include_router(market_routes.router)
 app.include_router(analysis_routes.router)
 app.include_router(signal_routes.router)
 app.include_router(portfolio_routes.router)
+app.include_router(training_routes.router)
+app.include_router(live_routes.router)
 
 
 # ── Core endpoints ───────────────────────────────────────
@@ -123,6 +135,9 @@ async def health_check():
             "portfolio_optimizer": True,
             "risk_engine": True,
             "backtester": True,
+            "model_trainer": True,
+            "live_predictor": True,
+            "live_data_service": True,
         },
     }
 
