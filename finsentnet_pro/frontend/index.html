@@ -706,6 +706,101 @@ body {
   .screen { padding:24px 14px; }
   .ascii-logo { font-size:6px; }
 }
+
+/* ═══════════════════════════════════════════
+   TRAINING OVERLAY STYLES
+   ═══════════════════════════════════════════ */
+.training-overlay {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  background:rgba(2,4,8,0.94); z-index:20000;
+  display:none; align-items:center; justify-content:center;
+  flex-direction:column;
+}
+.training-overlay.active { display:flex; }
+.training-card {
+  background:var(--bg-card); border:2px solid var(--border-active);
+  border-radius:16px; padding:40px 48px; text-align:center;
+  max-width:520px; width:90%; box-shadow:0 0 60px rgba(0,245,255,0.15);
+}
+.training-title {
+  font-family:var(--font-display); font-size:18px;
+  color:var(--cyan); letter-spacing:3px; margin-bottom:8px;
+}
+.training-ticker {
+  font-family:var(--font-data); font-size:28px;
+  color:#fff; margin:16px 0 8px;
+}
+.training-status {
+  font-family:var(--font-data); font-size:13px;
+  color:#8899AA; margin-bottom:20px; min-height:18px;
+}
+.training-progress-bar {
+  width:100%; height:8px; background:rgba(0,245,255,0.08);
+  border-radius:4px; overflow:hidden; margin-bottom:12px;
+}
+.training-progress-fill {
+  height:100%; width:0%; border-radius:4px;
+  background:linear-gradient(90deg, var(--cyan), var(--signal-buy));
+  transition:width 0.5s ease;
+  box-shadow:0 0 12px rgba(0,245,255,0.5);
+}
+.training-pct {
+  font-family:var(--font-data); font-size:24px;
+  color:var(--cyan); margin-bottom:6px;
+}
+.training-stats {
+  display:grid; grid-template-columns:1fr 1fr; gap:8px;
+  margin-top:16px; font-family:var(--font-data); font-size:11px;
+}
+.training-stat {
+  background:rgba(0,245,255,0.04); border:1px solid rgba(0,245,255,0.08);
+  border-radius:6px; padding:8px;
+}
+.training-stat .label { color:#667788; font-size:9px; letter-spacing:1px; }
+.training-stat .value { color:var(--cyan); font-size:14px; margin-top:2px; }
+.training-epoch-chart {
+  width:100%; height:80px; margin-top:16px;
+  background:rgba(0,245,255,0.02); border-radius:6px;
+  position:relative; overflow:hidden;
+}
+
+/* ═══════════════════════════════════════════
+   LIVE PRICE TICKER + REFRESH BAR
+   ═══════════════════════════════════════════ */
+.live-indicator {
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--font-data); font-size:11px; color:var(--signal-buy);
+}
+.live-dot {
+  width:8px; height:8px; border-radius:50%;
+  background:var(--signal-buy); animation:livePulse 1.5s infinite;
+}
+@keyframes livePulse {
+  0%,100% { opacity:1; box-shadow:0 0 4px var(--signal-buy); }
+  50% { opacity:0.4; box-shadow:0 0 12px var(--signal-buy); }
+}
+.refresh-btn {
+  background:rgba(0,245,255,0.06); border:1px solid rgba(0,245,255,0.2);
+  border-radius:6px; padding:6px 14px; color:var(--cyan);
+  font-family:var(--font-data); font-size:11px; cursor:pointer;
+  transition:all 0.2s; letter-spacing:1px;
+}
+.refresh-btn:hover {
+  background:rgba(0,245,255,0.15); border-color:var(--cyan);
+}
+.news-panel {
+  background:var(--bg-card); border:1px solid var(--border-glow);
+  border-radius:12px; padding:20px; grid-column:1/-1;
+}
+.news-item {
+  padding:10px 0; border-bottom:1px solid rgba(0,245,255,0.06);
+  font-size:13px; color:#BCC4CC;
+}
+.news-item:last-child { border-bottom:none; }
+.news-item .news-title { color:#E0E8F0; margin-bottom:4px; }
+.news-item .news-meta {
+  font-family:var(--font-data); font-size:10px; color:#667788;
+}
 </style>
 </head>
 <body>
@@ -733,6 +828,26 @@ body {
     <li>Optimizing portfolio allocation…</li>
     <li>Running risk diagnostics…</li>
   </ul>
+</div>
+
+<!-- ════════ TRAINING OVERLAY ════════ -->
+<div class="training-overlay" id="trainingOverlay">
+  <div class="training-card">
+    <div class="training-title">FINSENT MODEL TRAINING</div>
+    <div class="training-ticker" id="trainTicker">—</div>
+    <div class="training-status" id="trainStatus">Initializing…</div>
+    <div class="training-pct" id="trainPct">0%</div>
+    <div class="training-progress-bar">
+      <div class="training-progress-fill" id="trainProgressFill"></div>
+    </div>
+    <div class="training-stats">
+      <div class="training-stat"><div class="label">EPOCH</div><div class="value" id="trainEpoch">—</div></div>
+      <div class="training-stat"><div class="label">TRAIN LOSS</div><div class="value" id="trainLoss">—</div></div>
+      <div class="training-stat"><div class="label">VAL LOSS</div><div class="value" id="trainValLoss">—</div></div>
+      <div class="training-stat"><div class="label">ACCURACY</div><div class="value" id="trainAcc">—</div></div>
+    </div>
+    <div class="training-epoch-chart"><canvas id="trainLossChart"></canvas></div>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════════════════
@@ -903,7 +1018,7 @@ body {
     <div style="text-align:center;margin-top:24px;display:flex;gap:16px;justify-content:center;">
       <button class="btn-secondary" onclick="goToScreen(2)">← BACK</button>
       <button class="btn-primary" id="analyzeBtn" onclick="runAnalysis()">
-        ANALYZE SELECTED →
+        ⚡ TRAIN &amp; ANALYZE →
       </button>
     </div>
   </div>
@@ -921,10 +1036,16 @@ body {
       <div>
         <span class="dash-ticker" id="dashTicker">—</span>
         <span style="color:#667788;margin-left:10px;font-size:13px;font-family:var(--font-data);" id="dashName"></span>
+        <span class="live-indicator" id="liveIndicator" style="margin-left:14px;display:none;">
+          <span class="live-dot"></span> LIVE
+        </span>
       </div>
-      <div style="text-align:right;">
-        <div class="dash-price" id="dashPrice">—</div>
-        <div class="dash-change" id="dashChange"></div>
+      <div style="text-align:right;display:flex;align-items:center;gap:12px;">
+        <button class="refresh-btn" onclick="refreshPrediction()" title="Refresh signal">↻ REFRESH</button>
+        <div>
+          <div class="dash-price" id="dashPrice">—</div>
+          <div class="dash-change" id="dashChange"></div>
+        </div>
       </div>
     </div>
 
@@ -1028,6 +1149,12 @@ body {
         <div class="panel-title">🛡️ RISK METRICS</div>
         <div class="risk-meters" id="riskMeters"></div>
       </div>
+
+      <!-- === LIVE NEWS === -->
+      <div class="news-panel" id="newsPanel" style="display:none;">
+        <div class="panel-title">📰 LIVE NEWS FEED</div>
+        <div id="newsList"></div>
+      </div>
     </div>
 
     <div style="text-align:center;margin-top:28px;display:flex;gap:16px;justify-content:center;">
@@ -1108,6 +1235,12 @@ const state = {
   // chart references
   tvChart: null,
   allocChart: null,
+  // training + live state
+  trainLossChart: null,
+  liveRefreshTimer: null,
+  livePriceTimer: null,
+  currentTimeframe: '1D',
+  trainedTickers: {},  // {ticker: true} cache
 };
 
 /* ═══════════════════════════════════════════
@@ -1285,6 +1418,8 @@ function goToScreen(n){
   if(n===3) populateStockList();
   if(n===4) renderDashboard();
   if(n===5) renderPortfolioSummary();
+  // Stop live updates when navigating away from screen 4
+  if(n!==4) stopLiveUpdates();
   scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -1392,20 +1527,39 @@ function aiSuggest(){
 }
 
 /* ═══════════════════════════════════════════
-   ANALYSIS PIPELINE
+   ANALYSIS PIPELINE (Training-Aware)
    ═══════════════════════════════════════════ */
 async function runAnalysis(){
   if(!state.selectedStocks.length){ alert('Please select at least one stock.'); return; }
   state.capital=parseInt(document.getElementById('capitalInput').value.replace(/[^0-9]/g,''))||30000;
+  const market=state.selectedMarkets[0]||'SP500';
 
+  // ── Phase 1: Train models that haven't been trained yet ──
+  for(const ticker of state.selectedStocks){
+    try {
+      const checkRes=await fetch(`${API_BASE}/train/check/${ticker}`);
+      const checkData=await checkRes.json();
+      if(checkData.is_trained){
+        state.trainedTickers[ticker]=true;
+        continue;
+      }
+    } catch(e) {
+      console.log(`[FINSENT] Cannot check training for ${ticker}, will use demo.`);
+    }
+
+    // Train this ticker
+    await trainModel(ticker, market);
+  }
+
+  // ── Phase 2: Get predictions from trained models ──
   showLoading();
-
   try {
+    // Try real analysis endpoint first
     const res=await fetch(`${API_BASE}/analyze`,{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         tickers:state.selectedStocks,
-        market:state.selectedMarkets[0]||'SP500',
+        market:market,
         investment_amount:state.capital,
         risk_tolerance:state.riskTolerance,
         currency:state.currency,
@@ -1414,14 +1568,262 @@ async function runAnalysis(){
     });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     state.analysisResults=await res.json();
+
+    // Enrich with live predictions where available
+    await enrichWithLivePredictions(market);
   } catch(e) {
-    console.log('[FINSENT] Demo mode — API unavailable:', e.message);
+    console.log('[FINSENT] Using demo mode:', e.message);
     state.analysisResults=buildDemoResult();
+    // Still try live predictions
+    await enrichWithLivePredictions(market);
   }
 
-  await sleep(600);
+  await sleep(400);
   hideLoading();
   goToScreen(4);
+
+  // Start live updates
+  startLiveUpdates();
+}
+
+async function trainModel(ticker, market){
+  showTrainingOverlay(ticker);
+  try {
+    // Start training
+    await fetch(`${API_BASE}/train/start`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        ticker:ticker, market:market,
+        epochs:50, period:'2y',
+      }),
+    });
+
+    // Poll for progress
+    let done=false;
+    while(!done){
+      await sleep(1500);
+      try {
+        const res=await fetch(`${API_BASE}/train/status/${ticker}`);
+        const data=await res.json();
+        const progress=data.progress;
+        if(!progress) continue;
+
+        updateTrainingOverlay(progress);
+
+        if(progress.status==='completed'){
+          state.trainedTickers[ticker]=true;
+          done=true;
+        } else if(progress.status==='failed'){
+          console.warn(`Training failed for ${ticker}: ${progress.message}`);
+          done=true;
+        }
+      } catch(e){ /* keep polling */ }
+    }
+  } catch(e) {
+    console.log(`[FINSENT] Training unavailable for ${ticker}:`, e.message);
+  }
+  hideTrainingOverlay();
+}
+
+async function enrichWithLivePredictions(market){
+  if(!state.analysisResults||!state.analysisResults.signals) return;
+  for(let i=0;i<state.analysisResults.signals.length;i++){
+    const sig=state.analysisResults.signals[i];
+    if(!state.trainedTickers[sig.ticker]) continue;
+    try {
+      const res=await fetch(`${API_BASE}/live/predict/${sig.ticker}?market=${market}&capital=${state.capital}&risk_tolerance=${state.riskTolerance}`);
+      if(!res.ok) continue;
+      const pred=await res.json();
+      if(pred.status!=='success') continue;
+      // Merge live prediction data into the signal
+      sig.direction=pred.prediction.direction;
+      sig.confidence=pred.prediction.confidence;
+      sig.predicted_return=pred.prediction.predicted_return;
+      sig.entry_price=pred.signal.entry_price;
+      sig.target_price=pred.signal.target_price;
+      sig.stop_loss=pred.signal.stop_loss;
+      sig.risk_reward=pred.signal.risk_reward;
+      sig.capital_required=pred.signal.capital_required;
+      sig.quantity=pred.signal.quantity;
+      sig.time_horizon=pred.signal.time_horizon;
+      sig.sentiment_score=pred.analysis.sentiment_score;
+      sig.technical_score=pred.analysis.technical_score;
+      sig.regime=pred.analysis.regime;
+      sig.reasoning=pred.analysis.reasoning;
+      sig._live=true;
+    } catch(e){ /* use existing signal */ }
+  }
+}
+
+/* ═══════════════════════════════════════════
+   TRAINING OVERLAY UI
+   ═══════════════════════════════════════════ */
+function showTrainingOverlay(ticker){
+  document.getElementById('trainingOverlay').classList.add('active');
+  document.getElementById('trainTicker').textContent=ticker;
+  document.getElementById('trainStatus').textContent='Initializing neural network…';
+  document.getElementById('trainPct').textContent='0%';
+  document.getElementById('trainProgressFill').style.width='0%';
+  document.getElementById('trainEpoch').textContent='—';
+  document.getElementById('trainLoss').textContent='—';
+  document.getElementById('trainValLoss').textContent='—';
+  document.getElementById('trainAcc').textContent='—';
+  // Reset loss chart
+  const ctx=document.getElementById('trainLossChart');
+  if(ctx&&state.trainLossChart){ state.trainLossChart.destroy(); state.trainLossChart=null; }
+}
+
+function updateTrainingOverlay(p){
+  document.getElementById('trainTicker').textContent=p.ticker||'—';
+  document.getElementById('trainStatus').textContent=p.message||p.status;
+  const pct=p.progress_pct||0;
+  document.getElementById('trainPct').textContent=pct.toFixed(0)+'%';
+  document.getElementById('trainProgressFill').style.width=pct+'%';
+  document.getElementById('trainEpoch').textContent=
+    p.current_epoch?`${p.current_epoch}/${p.total_epochs}`:'—';
+  document.getElementById('trainLoss').textContent=
+    p.train_loss?p.train_loss.toFixed(4):'—';
+  document.getElementById('trainValLoss').textContent=
+    p.val_loss?p.val_loss.toFixed(4):'—';
+  document.getElementById('trainAcc').textContent=
+    p.val_accuracy?p.val_accuracy.toFixed(1)+'%':'—';
+
+  // Draw mini loss chart
+  if(p.history&&p.history.train_loss&&p.history.train_loss.length>1){
+    drawTrainLossChart(p.history);
+  }
+}
+
+function drawTrainLossChart(history){
+  const ctx=document.getElementById('trainLossChart');
+  if(!ctx||typeof Chart==='undefined') return;
+
+  if(state.trainLossChart){ state.trainLossChart.destroy(); }
+  const labels=history.train_loss.map((_,i)=>i+1);
+
+  state.trainLossChart=new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:labels,
+      datasets:[
+        { label:'Train', data:history.train_loss, borderColor:'#00F5FF', borderWidth:1.5, pointRadius:0, fill:false, tension:0.3 },
+        { label:'Val', data:history.val_loss, borderColor:'#FFD700', borderWidth:1.5, pointRadius:0, fill:false, tension:0.3 },
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:true, position:'top', labels:{ color:'#8899AA', font:{size:9}, boxWidth:12 } } },
+      scales:{
+        x:{ display:false },
+        y:{ display:true, ticks:{ color:'#667788', font:{size:8} }, grid:{ color:'rgba(0,245,255,0.05)' } },
+      },
+    },
+  });
+}
+
+function hideTrainingOverlay(){
+  document.getElementById('trainingOverlay').classList.remove('active');
+  if(state.trainLossChart){ state.trainLossChart.destroy(); state.trainLossChart=null; }
+}
+
+/* ═══════════════════════════════════════════
+   LIVE DATA UPDATES
+   ═══════════════════════════════════════════ */
+function startLiveUpdates(){
+  // Stop any existing timers
+  stopLiveUpdates();
+
+  // Show live indicator
+  const liveEl=document.getElementById('liveIndicator');
+  if(liveEl) liveEl.style.display='inline-flex';
+
+  // Price polling every 30s
+  state.livePriceTimer=setInterval(()=>{
+    updateLivePrices();
+  }, 30000);
+
+  // Fetch news for current stock
+  fetchLiveNews();
+}
+
+function stopLiveUpdates(){
+  if(state.livePriceTimer){ clearInterval(state.livePriceTimer); state.livePriceTimer=null; }
+  if(state.liveRefreshTimer){ clearInterval(state.liveRefreshTimer); state.liveRefreshTimer=null; }
+}
+
+async function updateLivePrices(){
+  const data=state.analysisResults;
+  if(!data||!data.signals) return;
+  const sig=data.signals[state.currentStockIdx];
+  if(!sig) return;
+  const market=state.selectedMarkets[0]||'SP500';
+
+  try {
+    const res=await fetch(`${API_BASE}/live/quote/${sig.ticker}?market=${market}`);
+    if(!res.ok) return;
+    const quote=await res.json();
+    if(quote.price){
+      document.getElementById('dashPrice').textContent=fmt$(quote.price);
+      const up=quote.change_pct>=0;
+      document.getElementById('dashChange').innerHTML=
+        `<span style="color:${up?'var(--signal-buy)':'var(--signal-sell)'}">${up?'▲':'▼'} ${up?'+':''}${quote.change_pct}% (${quote.source||'live'})</span>`;
+    }
+  } catch(e){ /* silent */ }
+}
+
+async function refreshPrediction(){
+  const data=state.analysisResults;
+  if(!data||!data.signals) return;
+  const sig=data.signals[state.currentStockIdx];
+  if(!sig) return;
+  const market=state.selectedMarkets[0]||'SP500';
+
+  if(!state.trainedTickers[sig.ticker]){
+    console.log('Model not trained for', sig.ticker, '— showing demo data');
+    return;
+  }
+
+  try {
+    const res=await fetch(`${API_BASE}/live/predict/${sig.ticker}?market=${market}&capital=${state.capital}&risk_tolerance=${state.riskTolerance}`);
+    if(!res.ok) return;
+    const pred=await res.json();
+    if(pred.status!=='success') return;
+
+    sig.direction=pred.prediction.direction;
+    sig.confidence=pred.prediction.confidence;
+    sig.predicted_return=pred.prediction.predicted_return;
+    sig.entry_price=pred.signal.entry_price;
+    sig.target_price=pred.signal.target_price;
+    sig.stop_loss=pred.signal.stop_loss;
+    sig.risk_reward=pred.signal.risk_reward;
+    sig._live=true;
+
+    renderStockView(state.currentStockIdx);
+  } catch(e){ console.log('Refresh failed:', e.message); }
+}
+
+async function fetchLiveNews(){
+  const data=state.analysisResults;
+  if(!data||!data.signals) return;
+  const sig=data.signals[state.currentStockIdx];
+  if(!sig) return;
+  const market=state.selectedMarkets[0]||'SP500';
+
+  try {
+    const res=await fetch(`${API_BASE}/live/news/${sig.ticker}?market=${market}`);
+    if(!res.ok) return;
+    const newsData=await res.json();
+    if(newsData.articles&&newsData.articles.length){
+      const panel=document.getElementById('newsPanel');
+      panel.style.display='block';
+      document.getElementById('newsList').innerHTML=newsData.articles.slice(0,6).map(a=>
+        `<div class="news-item">
+          <div class="news-title">${a.title}</div>
+          <div class="news-meta">${a.source||''}${a.published_at?' · '+new Date(a.published_at).toLocaleString():''}</div>
+        </div>`
+      ).join('');
+    }
+  } catch(e){ /* news not available */ }
 }
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
@@ -1548,6 +1950,8 @@ function switchStock(idx){
   state.currentStockIdx=idx;
   document.querySelectorAll('.stock-tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
   renderStockView(idx);
+  fetchLiveNews();
+  updateLivePrices();
 }
 
 function renderStockView(idx){
@@ -1560,7 +1964,11 @@ function renderStockView(idx){
   document.getElementById('dashPrice').textContent=fmt$(sig.entry_price);
   const up=sig.predicted_return>=0;
   document.getElementById('dashChange').innerHTML=
-    `<span style="color:${up?'var(--signal-buy)':'var(--signal-sell)'}">${up?'▲':'▼'} ${up?'+':''}${sig.predicted_return}% predicted</span>`;
+    `<span style="color:${up?'var(--signal-buy)':'var(--signal-sell)'}">${up?'▲':'▼'} ${up?'+':''}${sig.predicted_return}% predicted${sig._live?' (LIVE)':''}</span>`;
+
+  /* ── Live indicator ── */
+  const liveEl=document.getElementById('liveIndicator');
+  if(liveEl) liveEl.style.display=sig._live?'inline-flex':'none';
 
   /* ── Signal Badge ── */
   const badge=document.getElementById('signalBadge');
@@ -1638,9 +2046,9 @@ function animateBar(barId,valId,value){
 }
 
 /* ═══════════════════════════════════════════
-   ANIMATION 4 — TRADINGVIEW CHART DRAW
+   ANIMATION 4 — TRADINGVIEW CHART DRAW (Live Data)
    ═══════════════════════════════════════════ */
-function renderTVChart(sig){
+async function renderTVChart(sig){
   const container=document.getElementById('chartContainer');
   container.innerHTML='';
 
@@ -1659,8 +2067,47 @@ function renderTVChart(sig){
     timeScale:{ borderColor:'rgba(0,245,255,0.08)', timeVisible:true },
   });
 
-  // Demo candles
-  const candles=genCandles(sig.entry_price,120);
+  // Try fetching real candle data
+  let candles=null;
+  let overlays=null;
+  let volumeData=null;
+  const market=state.selectedMarkets[0]||'SP500';
+  const tf=state.currentTimeframe||'1D';
+
+  try {
+    if(tf==='1D'){
+      // Daily candles
+      const res=await fetch(`${API_BASE}/live/daily/${sig.ticker}?market=${market}&period=6mo`);
+      if(res.ok){
+        const data=await res.json();
+        if(data.candles&&data.candles.length>5){
+          candles=data.candles;
+          overlays=data.overlays;
+          volumeData=data.volume;
+        }
+      }
+    } else {
+      // Intraday candles
+      const intervalMap={'1m':'1m','5m':'5m','15m':'15m','1H':'1h','4H':'1h'};
+      const periodMap={'1m':'1d','5m':'5d','15m':'5d','1H':'5d','4H':'5d'};
+      const interval=intervalMap[tf]||'5m';
+      const period=periodMap[tf]||'5d';
+      const res=await fetch(`${API_BASE}/live/candles/${sig.ticker}?market=${market}&interval=${interval}&period=${period}`);
+      if(res.ok){
+        const data=await res.json();
+        if(data.candles&&data.candles.length>5){
+          candles=data.candles;
+        }
+      }
+    }
+  } catch(e){
+    console.log('[FINSENT] Using demo candles:', e.message);
+  }
+
+  // Fallback to generated demo candles
+  if(!candles||candles.length<5){
+    candles=genCandles(sig.entry_price,120);
+  }
 
   const cs=chart.addCandlestickSeries({
     upColor:'#00FF88', downColor:'#FF3366',
@@ -1669,20 +2116,59 @@ function renderTVChart(sig){
   });
   cs.setData(candles);
 
+  // Add indicator overlays (SMA, Bollinger Bands)
+  if(overlays){
+    if(overlays.sma_50&&overlays.sma_50.length){
+      const sma50=chart.addLineSeries({color:'#FFD700',lineWidth:1,title:'SMA 50',priceLineVisible:false});
+      sma50.setData(overlays.sma_50);
+    }
+    if(overlays.sma_200&&overlays.sma_200.length){
+      const sma200=chart.addLineSeries({color:'#8B5CF6',lineWidth:1,title:'SMA 200',priceLineVisible:false});
+      sma200.setData(overlays.sma_200);
+    }
+    if(overlays.bb_upper&&overlays.bb_upper.length){
+      const bbUp=chart.addLineSeries({color:'rgba(0,245,255,0.3)',lineWidth:1,lineStyle:2,priceLineVisible:false});
+      bbUp.setData(overlays.bb_upper);
+    }
+    if(overlays.bb_lower&&overlays.bb_lower.length){
+      const bbLow=chart.addLineSeries({color:'rgba(0,245,255,0.3)',lineWidth:1,lineStyle:2,priceLineVisible:false});
+      bbLow.setData(overlays.bb_lower);
+    }
+  }
+
   // Volume histogram
   const vol=chart.addHistogramSeries({
     priceFormat:{type:'volume'}, priceScaleId:'vol',
   });
   chart.priceScale('vol').applyOptions({scaleMargins:{top:0.85,bottom:0}});
-  vol.setData(candles.map(c=>({
-    time:c.time, value:c.volume,
-    color: c.close>=c.open ? 'rgba(0,255,136,0.15)' : 'rgba(255,51,102,0.15)',
-  })));
+
+  if(volumeData&&volumeData.length){
+    vol.setData(volumeData);
+  } else {
+    vol.setData(candles.map(c=>({
+      time:c.time, value:c.volume||0,
+      color: c.close>=c.open ? 'rgba(0,255,136,0.15)' : 'rgba(255,51,102,0.15)',
+    })));
+  }
 
   // Price lines: entry, target, stop
-  cs.createPriceLine({price:sig.entry_price, color:'#00F5FF', lineWidth:1, lineStyle:2, title:'Entry'});
-  cs.createPriceLine({price:sig.target_price, color:'#00FF88', lineWidth:1, lineStyle:2, title:'Target'});
-  cs.createPriceLine({price:sig.stop_loss,    color:'#FF3366', lineWidth:1, lineStyle:2, title:'Stop'});
+  if(sig.entry_price) cs.createPriceLine({price:sig.entry_price, color:'#00F5FF', lineWidth:1, lineStyle:2, title:'Entry'});
+  if(sig.target_price) cs.createPriceLine({price:sig.target_price, color:'#00FF88', lineWidth:1, lineStyle:2, title:'Target'});
+  if(sig.stop_loss) cs.createPriceLine({price:sig.stop_loss,    color:'#FF3366', lineWidth:1, lineStyle:2, title:'Stop'});
+
+  // Add buy/sell markers on chart if live
+  if(sig._live && sig.direction){
+    const lastCandle=candles[candles.length-1];
+    if(lastCandle){
+      const markers=[];
+      if(sig.direction.includes('BUY')){
+        markers.push({time:lastCandle.time, position:'belowBar', color:'#00FF88', shape:'arrowUp', text:'BUY'});
+      } else if(sig.direction.includes('SELL')){
+        markers.push({time:lastCandle.time, position:'aboveBar', color:'#FF3366', shape:'arrowDown', text:'SELL'});
+      }
+      if(markers.length) cs.setMarkers(markers);
+    }
+  }
 
   chart.timeScale().fitContent();
   state.tvChart=chart;
@@ -1713,11 +2199,20 @@ function genCandles(base,n){
 function setTimeframe(btn,tf){
   document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  // In production: refetch candles for chosen interval
+  state.currentTimeframe=tf;
+  // Re-render chart with new timeframe
+  const data=state.analysisResults;
+  if(data&&data.signals&&data.signals[state.currentStockIdx]){
+    renderTVChart(data.signals[state.currentStockIdx]);
+  }
 }
 function toggleIndicator(btn){
   btn.classList.toggle('active');
-  // In production: toggle overlay on chart
+  // Re-render chart with toggled indicator
+  const data=state.analysisResults;
+  if(data&&data.signals&&data.signals[state.currentStockIdx]){
+    renderTVChart(data.signals[state.currentStockIdx]);
+  }
 }
 
 /* ═══════════════════════════════════════════
