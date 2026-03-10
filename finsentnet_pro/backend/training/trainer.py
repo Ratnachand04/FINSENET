@@ -112,13 +112,13 @@ class ModelTrainer:
         horizon: int = 5,
         val_ratio: float = 0.2,
         patience: int = 10,
-        period: str = "2y",
+        period: str = "5y",
         progress_callback: Optional[Callable] = None,
     ) -> Dict:
         """
         Full training pipeline for a single company.
 
-        1. Fetch 2y OHLCV → compute indicators
+        1. Fetch 5y OHLCV → compute indicators
         2. Create labeled sliding-window dataset
         3. Train model with early stopping
         4. Save best checkpoint

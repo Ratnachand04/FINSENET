@@ -2,20 +2,34 @@
 FINSENT NET PRO — Market Data Fetcher
 Fetches OHLCV data from multiple sources with intelligent fallback.
 Supports: S&P500, NASDAQ, NYSE, BSE, NSE, Commodities, Crypto
+
+Data Sources (priority):
+  1. FMP (Financial Modeling Prep) — primary, 250 calls/day/key, 5y history
+  2. yfinance — free fallback, no key needed
+  3. Synthetic — demo fallback when all APIs fail
 """
 
+import os
+import logging
+import requests
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
-import requests
 import time
+
+logger = logging.getLogger("finsent.market_data")
+
+FMP_BASE = "https://financialmodelingprep.com/api/v3"
+FMP_DAILY_LIMIT = 250
 
 
 class MarketDataFetcher:
     """
     Unified data fetcher supporting all global markets.
+    FMP (Financial Modeling Prep) is the primary source.
+    Falls back to yfinance when FMP keys are exhausted.
     Implements strict temporal integrity — no look-ahead contamination.
     """
 
@@ -120,20 +134,62 @@ class MarketDataFetcher:
     def __init__(self):
         self._session_cache: Dict[str, pd.DataFrame] = {}
 
+        # Load FMP keys from environment (comma-separated)
+        fmp_keys_raw = os.environ.get("FMP_API_KEYS", "")
+        self._fmp_keys = [k.strip() for k in fmp_keys_raw.split(",") if k.strip()]
+        self._fmp_call_counts: Dict[str, Dict[str, int]] = {}
+        self._fmp_index = 0
+
+        if self._fmp_keys:
+            logger.info(
+                f"MarketDataFetcher: {len(self._fmp_keys)} FMP key(s) loaded "
+                f"({len(self._fmp_keys) * FMP_DAILY_LIMIT} calls/day)"
+            )
+
+    def _get_fmp_key(self) -> Optional[str]:
+        """Get next available FMP key with round-robin rotation."""
+        if not self._fmp_keys:
+            return None
+        from datetime import date
+        today = date.today().isoformat()
+        tried = 0
+        while tried < len(self._fmp_keys):
+            key = self._fmp_keys[self._fmp_index]
+            counts = self._fmp_call_counts.get(key, {})
+            used = counts.get(today, 0)
+            if used < FMP_DAILY_LIMIT:
+                if key not in self._fmp_call_counts:
+                    self._fmp_call_counts[key] = {}
+                self._fmp_call_counts[key] = {today: used + 1}
+                return key
+            self._fmp_index = (self._fmp_index + 1) % len(self._fmp_keys)
+            tried += 1
+        logger.warning("All FMP keys exhausted for today")
+        return None
+
+    def set_fmp_keys(self, keys: List[str]):
+        """Set FMP keys at runtime."""
+        self._fmp_keys = [k.strip() for k in keys if k.strip()]
+        logger.info(f"FMP keys updated: {len(self._fmp_keys)} total")
+
     def fetch_ohlcv(
         self,
         ticker: str,
         market: str,
-        period: str = "2y",
+        period: str = "5y",
         interval: str = "1d",
     ) -> pd.DataFrame:
         """
-        Fetch OHLCV data with automatic suffix handling and validation.
+        Fetch OHLCV data. Tries FMP first, falls back to yfinance.
+        FMP free tier: 5 years max historical data.
 
         Returns:
             DataFrame with columns: [Open, High, Low, Close, Volume]
             Index: DatetimeIndex
         """
+        # Cap period to 5y (FMP free tier limit)
+        period = self._cap_period(period)
+
         config = self.MARKET_CONFIG.get(market, {})
         suffix = config.get("suffix", "")
 
@@ -150,6 +206,19 @@ class MarketDataFetcher:
         if cache_key in self._session_cache:
             return self._session_cache[cache_key].copy()
 
+        # 1) Try FMP (primary source for daily data)
+        if self._fmp_keys and interval == "1d":
+            try:
+                df = self._fetch_fmp_historical(ticker, period)
+                if df is not None and not df.empty:
+                    df = self._validate_and_clean_ohlcv(df, ticker)
+                    self._session_cache[cache_key] = df
+                    logger.info(f"FMP: fetched {len(df)} bars for {ticker}")
+                    return df.copy()
+            except Exception as e:
+                logger.debug(f"FMP historical failed for {ticker}: {e}")
+
+        # 2) Fallback: yfinance
         try:
             stock = yf.Ticker(full_ticker)
             df = stock.history(period=period, interval=interval, auto_adjust=True)
@@ -161,8 +230,57 @@ class MarketDataFetcher:
             return df.copy()
 
         except Exception as e:
-            print(f"[WARNING] Primary fetch failed for {full_ticker}: {e}")
+            print(f"[WARNING] All fetch sources failed for {full_ticker}: {e}")
             return self._fallback_synthetic(ticker, period)
+
+    def _fetch_fmp_historical(self, ticker: str, period: str) -> Optional[pd.DataFrame]:
+        """Fetch daily OHLCV from FMP historical-price-full endpoint."""
+        api_key = self._get_fmp_key()
+        if not api_key:
+            return None
+
+        period_days = {
+            "1mo": 30, "3mo": 90, "6mo": 180,
+            "1y": 365, "2y": 730, "3y": 1095,
+            "5y": 1825, "max": 1825,
+        }
+        days = period_days.get(period, 1825)
+        from_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        to_date = datetime.now().strftime("%Y-%m-%d")
+
+        url = (
+            f"{FMP_BASE}/historical-price-full/{ticker}"
+            f"?from={from_date}&to={to_date}&apikey={api_key}"
+        )
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        historical = data.get("historical", [])
+        if not historical:
+            return None
+
+        df = pd.DataFrame(historical)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index("date").sort_index()
+        df = df.rename(columns={
+            "open": "Open", "high": "High", "low": "Low",
+            "close": "Close", "volume": "Volume",
+        })
+
+        required = ["Open", "High", "Low", "Close", "Volume"]
+        for c in required:
+            if c not in df.columns:
+                return None
+
+        return df[required]
+
+    @staticmethod
+    def _cap_period(period: str) -> str:
+        """Cap period to 5y max (FMP free tier limit)."""
+        # Periods that exceed 5y get capped
+        over_5y = {"10y", "max"}
+        return "5y" if period in over_5y else period
 
     def _validate_and_clean_ohlcv(
         self, df: pd.DataFrame, ticker: str

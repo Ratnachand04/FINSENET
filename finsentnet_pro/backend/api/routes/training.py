@@ -37,14 +37,14 @@ class TrainRequest(BaseModel):
     learning_rate: float = Field(default=1e-3, ge=1e-6, le=1e-1)
     window_size: int = Field(default=30, ge=10, le=120)
     horizon: int = Field(default=5, ge=1, le=30)
-    period: str = Field(default="2y", description="Data period: 1y, 2y, 5y")
+    period: str = Field(default="5y", description="Data period: 1y, 2y, 5y (FMP free tier max: 5y)")
 
 
 class BatchTrainRequest(BaseModel):
     tickers: list
     market: str = "SP500"
     epochs: int = 50
-    period: str = "2y"
+    period: str = "5y"
 
 
 # ═══════════════════════════════════════════════════════

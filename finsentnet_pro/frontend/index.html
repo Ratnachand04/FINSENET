@@ -861,7 +861,8 @@ body {
 <div class="screen active" id="screen1">
   <div style="max-width:640px;margin:0 auto;">
 
-    <div class="ascii-logo glitch" data-text="███████╗██╗███╗   ██╗███████╗███████╗███╗   ██╗████████╗">███████╗██╗███╗   ██╗███████╗███████╗███╗   ██╗████████╗
+    <div class="ascii-logo glitch" data-text="███████╗██╗███╗   ██╗███████╗███████╗███╗   ██╗████████╗">
+███████╗██╗███╗   ██╗███████╗███████╗███╗   ██╗████████╗
 ██╔════╝██║████╗  ██║██╔════╝██╔════╝████╗  ██║╚══██╔══╝
 █████╗  ██║██╔██╗ ██║███████╗█████╗  ██╔██╗ ██║   ██║
 ██╔══╝  ██║██║╚██╗██║╚════██║██╔══╝  ██║╚██╗██║   ██║
@@ -916,6 +917,31 @@ body {
           <button class="horizon-btn" onclick="setHorizon(this,'6M')">6M</button>
           <button class="horizon-btn" onclick="setHorizon(this,'1Y')">1Y</button>
         </div>
+      </div>
+    </div>
+
+    <!-- FMP API Key Configuration -->
+    <div class="card" style="margin-top:18px;border-color:var(--gold);">
+      <div onclick="document.getElementById('fmpPanel').style.display=document.getElementById('fmpPanel').style.display==='none'?'block':'none'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        <label style="font-family:var(--font-display);font-size:11px;letter-spacing:2px;color:var(--gold);cursor:pointer;">
+          🔑 FMP API KEYS (Financial Modeling Prep)
+        </label>
+        <span style="color:var(--gold);font-size:12px;" id="fmpKeyCount">0 keys</span>
+      </div>
+      <div id="fmpPanel" style="display:none;margin-top:14px;">
+        <p style="color:#8899AA;font-size:11px;margin-bottom:10px;">
+          Free tier: 250 calls/day/key • 5 years historical data • Multiple keys for rotation
+        </p>
+        <div class="input-group" style="margin-bottom:8px;">
+          <textarea id="fmpKeysInput" rows="3" placeholder="Paste FMP API keys (one per line or comma-separated)" style="width:100%;background:var(--bg-card);border:1px solid rgba(0,255,255,0.2);color:var(--text-primary);font-family:var(--font-data);font-size:12px;padding:10px;border-radius:6px;resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="quick-btn" onclick="saveFmpKeys()" style="padding:6px 18px;background:var(--gold);color:#000;font-weight:bold;">
+            SAVE KEYS
+          </button>
+          <span id="fmpStatus" style="font-size:11px;color:#8899AA;"></span>
+        </div>
+        <div id="fmpKeyStatus" style="margin-top:10px;font-size:11px;color:#8899AA;"></div>
       </div>
     </div>
 
@@ -1453,6 +1479,69 @@ function setHorizon(btn,val){
 }
 
 /* ═══════════════════════════════════════════
+   FMP API KEY MANAGEMENT
+   ═══════════════════════════════════════════ */
+function saveFmpKeys(){
+  const raw = document.getElementById('fmpKeysInput').value.trim();
+  if(!raw){ document.getElementById('fmpStatus').textContent='⚠ No keys entered'; return; }
+  const keys = raw.split(/[\n,]+/).map(k=>k.trim()).filter(k=>k.length>5);
+  if(keys.length===0){ document.getElementById('fmpStatus').textContent='⚠ Invalid keys'; return; }
+
+  document.getElementById('fmpStatus').textContent='Saving...';
+  fetch(`${API_BASE}/live/settings/api-keys`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({fmp_keys:keys})
+  }).then(r=>r.json()).then(d=>{
+    if(d.status==='ok'){
+      const cnt = d.sources?.fmp_keys_count||keys.length;
+      document.getElementById('fmpKeyCount').textContent=cnt+' key'+(cnt>1?'s':'');
+      document.getElementById('fmpStatus').textContent=`✅ ${cnt} key(s) saved · ${d.sources?.fmp_daily_budget||cnt*250} calls/day`;
+      document.getElementById('fmpKeysInput').value='';
+      loadFmpKeyStatus();
+    } else {
+      document.getElementById('fmpStatus').textContent='⚠ '+JSON.stringify(d);
+    }
+  }).catch(e=>{
+    document.getElementById('fmpStatus').textContent='⚠ Server offline — keys saved locally';
+    localStorage.setItem('fmp_keys',JSON.stringify(keys));
+    document.getElementById('fmpKeyCount').textContent=keys.length+' key'+(keys.length>1?'s':'')+' (local)';
+  });
+}
+
+function loadFmpKeyStatus(){
+  fetch(`${API_BASE}/live/settings/api-keys`).then(r=>r.json()).then(d=>{
+    const src=d.sources||{};
+    if(src.fmp){
+      const cnt=src.fmp_keys_count||0;
+      document.getElementById('fmpKeyCount').textContent=cnt+' key'+(cnt>1?'s':'');
+      if(src.fmp_status && src.fmp_status.keys){
+        let html='<div style="margin-top:6px;">';
+        src.fmp_status.keys.forEach(k=>{
+          const pct=Math.round((k.calls_used/(k.calls_used+k.calls_remaining))*100)||0;
+          const col=k.exhausted?'#ff4444':'var(--green)';
+          html+=`<div style="margin:3px 0;display:flex;align-items:center;gap:8px;">
+            <span style="color:var(--cyan);">Key #${k.key_index}</span>
+            <div style="flex:1;height:4px;background:#1a1a3a;border-radius:2px;overflow:hidden;">
+              <div style="width:${pct}%;height:100%;background:${col};"></div>
+            </div>
+            <span>${k.calls_used}/${k.calls_used+k.calls_remaining}</span>
+          </div>`;
+        });
+        html+=`<div style="margin-top:6px;color:var(--gold);">Total: ${src.fmp_status.total_used}/${src.fmp_status.total_budget} calls used today</div>`;
+        html+='</div>';
+        document.getElementById('fmpKeyStatus').innerHTML=html;
+      }
+    } else {
+      document.getElementById('fmpKeyCount').textContent='0 keys';
+    }
+  }).catch(()=>{});
+}
+
+// Load FMP status on page load
+document.addEventListener('DOMContentLoaded',()=>{ setTimeout(loadFmpKeyStatus,1000); });
+
+/* ═══════════════════════════════════════════
    SCREEN 2 — MARKET SELECTOR
    ═══════════════════════════════════════════ */
 function toggleMarket(el,market){
@@ -1594,7 +1683,7 @@ async function trainModel(ticker, market){
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         ticker:ticker, market:market,
-        epochs:50, period:'2y',
+        epochs:50, period:'5y',
       }),
     });
 

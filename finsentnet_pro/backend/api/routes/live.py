@@ -4,7 +4,7 @@ FINSENT NET PRO — Live Data & Prediction Routes
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ class PredictRequest(BaseModel):
 
 
 class ApiKeyRequest(BaseModel):
+    fmp_keys: Optional[List[str]] = None
     alpha_vantage: Optional[str] = None
     finnhub: Optional[str] = None
     news_api: Optional[str] = None
@@ -238,6 +239,7 @@ async def configure_api_keys(request: ApiKeyRequest):
         raise HTTPException(status_code=503, detail="Live data service not ready")
 
     _live_service.configure_api_keys(
+        fmp_keys=request.fmp_keys,
         alpha_vantage=request.alpha_vantage,
         finnhub=request.finnhub,
         news_api=request.news_api,
@@ -247,6 +249,9 @@ async def configure_api_keys(request: ApiKeyRequest):
         "status": "ok",
         "message": "API keys updated",
         "sources": {
+            "fmp": _live_service.fmp.available,
+            "fmp_keys_count": _live_service.fmp.total_keys,
+            "fmp_daily_budget": _live_service.fmp.total_daily_budget,
             "alpha_vantage": bool(_live_service.alpha_vantage_key),
             "finnhub": bool(_live_service.finnhub_key),
             "news_api": bool(_live_service.news_api_key),
@@ -262,6 +267,10 @@ async def get_api_key_status():
 
     return {
         "sources": {
+            "fmp": _live_service.fmp.available,
+            "fmp_keys_count": _live_service.fmp.total_keys,
+            "fmp_daily_budget": _live_service.fmp.total_daily_budget,
+            "fmp_status": _live_service.get_fmp_key_status(),
             "alpha_vantage": bool(_live_service.alpha_vantage_key),
             "finnhub": bool(_live_service.finnhub_key),
             "news_api": bool(_live_service.news_api_key),

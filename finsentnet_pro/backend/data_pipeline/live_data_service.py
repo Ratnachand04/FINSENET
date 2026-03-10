@@ -3,15 +3,23 @@ FINSENT NET PRO — Live Data Service
 Multi-source real-time market data and news fetching.
 
 Data Sources (priority order):
-  1. Yahoo Finance (yfinance) — free, no API key needed
-  2. Alpha Vantage — intraday OHLCV (free key: 25 req/day)
-  3. Finnhub — real-time quotes + news (free key: 60 req/min)
-  4. NewsAPI — financial headlines (free key: 100 req/day)
+  1. FMP (Financial Modeling Prep) — primary source (free: 250 calls/day/key)
+     Supports multiple API keys with automatic rotation.
+  2. Yahoo Finance (yfinance) — free, no API key needed
+  3. Alpha Vantage — intraday OHLCV (free key: 25 req/day)
+  4. Finnhub — real-time quotes + news (free key: 60 req/min)
+  5. NewsAPI — financial headlines (free key: 100 req/day)
 
 API keys are loaded from environment variables:
+  FMP_API_KEYS           (comma-separated list of FMP keys)
   ALPHA_VANTAGE_API_KEY
   FINNHUB_API_KEY
   NEWS_API_KEY
+
+FMP Free Tier Limits:
+  - 250 API calls per day per key
+  - 5 years of historical data
+  - Multiple keys supported for round-robin rotation
 """
 
 import os
@@ -21,27 +29,133 @@ import requests
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 logger = logging.getLogger("finsent.live_data")
+
+FMP_BASE = "https://financialmodelingprep.com/api/v3"
+FMP_DAILY_LIMIT = 250  # free tier limit per key
+
+
+class FMPKeyManager:
+    """
+    Manages multiple FMP API keys with round-robin rotation
+    and per-key daily call tracking (250 calls/day free tier).
+    """
+
+    def __init__(self, keys: List[str]):
+        self.keys = [k.strip() for k in keys if k.strip()]
+        self._call_counts: Dict[str, Dict[str, int]] = {}  # key -> {date_str: count}
+        self._current_index = 0
+
+    @property
+    def available(self) -> bool:
+        return len(self.keys) > 0
+
+    @property
+    def total_keys(self) -> int:
+        return len(self.keys)
+
+    @property
+    def total_daily_budget(self) -> int:
+        return len(self.keys) * FMP_DAILY_LIMIT
+
+    def get_key(self) -> Optional[str]:
+        """
+        Get the next available FMP key that hasn't exceeded daily limit.
+        Uses round-robin with automatic rotation on limit.
+        """
+        if not self.keys:
+            return None
+
+        today = date.today().isoformat()
+        tried = 0
+
+        while tried < len(self.keys):
+            key = self.keys[self._current_index]
+            count = self._get_count(key, today)
+
+            if count < FMP_DAILY_LIMIT:
+                self._increment(key, today)
+                return key
+
+            # This key exhausted, try next
+            logger.warning(
+                f"FMP key #{self._current_index + 1} exhausted "
+                f"({count}/{FMP_DAILY_LIMIT}), rotating..."
+            )
+            self._current_index = (self._current_index + 1) % len(self.keys)
+            tried += 1
+
+        logger.error("All FMP API keys exhausted for today!")
+        return None
+
+    def get_status(self) -> Dict:
+        """Return status of all keys (call counts, remaining)."""
+        today = date.today().isoformat()
+        statuses = []
+        for i, key in enumerate(self.keys):
+            count = self._get_count(key, today)
+            statuses.append({
+                "key_index": i + 1,
+                "calls_used": count,
+                "calls_remaining": max(0, FMP_DAILY_LIMIT - count),
+                "exhausted": count >= FMP_DAILY_LIMIT,
+            })
+        total_used = sum(s["calls_used"] for s in statuses)
+        return {
+            "total_keys": len(self.keys),
+            "total_budget": self.total_daily_budget,
+            "total_used": total_used,
+            "total_remaining": self.total_daily_budget - total_used,
+            "keys": statuses,
+        }
+
+    def _get_count(self, key: str, date_str: str) -> int:
+        return self._call_counts.get(key, {}).get(date_str, 0)
+
+    def _increment(self, key: str, date_str: str):
+        if key not in self._call_counts:
+            self._call_counts[key] = {}
+        # Reset old dates to save memory
+        self._call_counts[key] = {
+            d: c for d, c in self._call_counts[key].items()
+            if d == date_str
+        }
+        self._call_counts[key][date_str] = self._call_counts[key].get(date_str, 0) + 1
+
+    def add_keys(self, new_keys: List[str]):
+        """Add new FMP keys at runtime."""
+        for k in new_keys:
+            k = k.strip()
+            if k and k not in self.keys:
+                self.keys.append(k)
+        logger.info(f"FMP keys updated: {len(self.keys)} total")
 
 
 class LiveDataService:
     """
     Unified live data provider for FINSENT NET PRO.
-    Works out of the box with yfinance (no API key needed).
-    Enhanced with optional premium APIs for better real-time data.
+    FMP (Financial Modeling Prep) is the primary data source.
+    Falls back to yfinance (free, no key) when FMP keys are exhausted.
     """
 
     def __init__(self):
-        # Load API keys from environment
+        # Load FMP keys from environment (comma-separated)
+        fmp_keys_raw = os.environ.get("FMP_API_KEYS", "")
+        fmp_keys = [k for k in fmp_keys_raw.split(",") if k.strip()]
+        self.fmp = FMPKeyManager(fmp_keys)
+
+        # Legacy API keys
         self.alpha_vantage_key = os.environ.get("ALPHA_VANTAGE_API_KEY", "")
         self.finnhub_key = os.environ.get("FINNHUB_API_KEY", "")
         self.news_api_key = os.environ.get("NEWS_API_KEY", "")
 
         # Rate limiting
         self._last_request_time: Dict[str, float] = {}
-        self._min_interval = {"alpha_vantage": 12, "finnhub": 1, "newsapi": 1}
+        self._min_interval = {
+            "fmp": 0.5, "alpha_vantage": 12, "finnhub": 1, "newsapi": 1,
+        }
 
         # Cache
         self._news_cache: Dict[str, Dict] = {}
@@ -49,6 +163,7 @@ class LiveDataService:
 
         logger.info(
             f"LiveDataService initialized | "
+            f"FMP: {self.fmp.total_keys} key(s) ({self.fmp.total_daily_budget} calls/day) | "
             f"Alpha Vantage: {'✓' if self.alpha_vantage_key else '✗'} | "
             f"Finnhub: {'✓' if self.finnhub_key else '✗'} | "
             f"NewsAPI: {'✓' if self.news_api_key else '✗'}"
@@ -56,11 +171,14 @@ class LiveDataService:
 
     def configure_api_keys(
         self,
+        fmp_keys: Optional[List[str]] = None,
         alpha_vantage: Optional[str] = None,
         finnhub: Optional[str] = None,
         news_api: Optional[str] = None,
     ):
         """Set API keys at runtime."""
+        if fmp_keys:
+            self.fmp.add_keys(fmp_keys)
         if alpha_vantage:
             self.alpha_vantage_key = alpha_vantage
         if finnhub:
@@ -75,9 +193,19 @@ class LiveDataService:
 
     def get_realtime_quote(self, ticker: str, market: str = "SP500") -> Dict:
         """
-        Get real-time price quote. Tries Finnhub first, falls back to yfinance.
+        Get real-time price quote.
+        Priority: FMP → Finnhub → yfinance → synthetic.
         """
-        # Try Finnhub (fastest real-time)
+        # 1) FMP (primary)
+        if self.fmp.available:
+            try:
+                result = self._fmp_quote(ticker)
+                if result and result.get("price", 0) > 0:
+                    return result
+            except Exception as e:
+                logger.debug(f"FMP quote failed for {ticker}: {e}")
+
+        # 2) Finnhub
         if self.finnhub_key:
             try:
                 result = self._finnhub_quote(ticker)
@@ -86,12 +214,45 @@ class LiveDataService:
             except Exception as e:
                 logger.debug(f"Finnhub quote failed for {ticker}: {e}")
 
-        # Fallback: yfinance
+        # 3) yfinance
         try:
             return self._yfinance_quote(ticker, market)
         except Exception as e:
             logger.error(f"All quote sources failed for {ticker}: {e}")
             return self._synthetic_quote(ticker)
+
+    def _fmp_quote(self, ticker: str) -> Dict:
+        """Fetch real-time quote from FMP."""
+        api_key = self.fmp.get_key()
+        if not api_key:
+            return {}
+        self._rate_limit("fmp")
+        url = f"{FMP_BASE}/quote/{ticker}?apikey={api_key}"
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if not data or not isinstance(data, list) or len(data) == 0:
+            return {}
+
+        q = data[0]
+        price = q.get("price", 0)
+        prev = q.get("previousClose", price)
+
+        return {
+            "ticker": ticker,
+            "price": round(price, 2),
+            "open": round(q.get("open", price), 2),
+            "high": round(q.get("dayHigh", price), 2),
+            "low": round(q.get("dayLow", price), 2),
+            "prev_close": round(prev, 2),
+            "change": round(q.get("change", 0), 2),
+            "change_pct": round(q.get("changesPercentage", 0), 2),
+            "volume": q.get("volume", 0),
+            "market_cap": q.get("marketCap"),
+            "timestamp": datetime.utcnow().isoformat(),
+            "source": "fmp",
+        }
 
     def _finnhub_quote(self, ticker: str) -> Dict:
         """Fetch real-time quote from Finnhub."""
@@ -176,9 +337,18 @@ class LiveDataService:
     ) -> List[Dict]:
         """
         Fetch intraday OHLCV candles.
-        Tries Alpha Vantage first, falls back to yfinance.
+        Priority: FMP → Alpha Vantage → yfinance.
         """
-        # Try Alpha Vantage (detailed intraday)
+        # 1) FMP intraday
+        if self.fmp.available:
+            try:
+                candles = self._fmp_intraday(ticker, interval)
+                if candles:
+                    return candles
+            except Exception as e:
+                logger.debug(f"FMP intraday failed: {e}")
+
+        # 2) Alpha Vantage
         if self.alpha_vantage_key:
             try:
                 candles = self._alpha_vantage_intraday(ticker, interval)
@@ -186,6 +356,52 @@ class LiveDataService:
                     return candles
             except Exception as e:
                 logger.debug(f"Alpha Vantage intraday failed: {e}")
+
+        # 3) yfinance
+        try:
+            return self._yfinance_intraday(ticker, market, interval)
+        except Exception as e:
+            logger.error(f"All intraday sources failed for {ticker}: {e}")
+            return []
+
+    def _fmp_intraday(self, ticker: str, interval: str) -> List[Dict]:
+        """Fetch intraday candles from FMP."""
+        api_key = self.fmp.get_key()
+        if not api_key:
+            return []
+        self._rate_limit("fmp")
+
+        # Map intervals to FMP format
+        fmp_interval = {
+            "1m": "1min", "5m": "5min", "15m": "15min", "30m": "30min", "1h": "1hour",
+            "1min": "1min", "5min": "5min", "15min": "15min", "30min": "30min", "60min": "1hour",
+        }.get(interval, "5min")
+
+        url = f"{FMP_BASE}/historical-chart/{fmp_interval}/{ticker}?apikey={api_key}"
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if not data or not isinstance(data, list):
+            return []
+
+        candles = []
+        for item in data:
+            try:
+                ts = datetime.strptime(item["date"], "%Y-%m-%d %H:%M:%S")
+                candles.append({
+                    "time": int(ts.timestamp()),
+                    "open": float(item["open"]),
+                    "high": float(item["high"]),
+                    "low": float(item["low"]),
+                    "close": float(item["close"]),
+                    "volume": int(item.get("volume", 0)),
+                })
+            except (KeyError, ValueError):
+                continue
+
+        candles.sort(key=lambda x: x["time"])
+        return candles
 
         # Fallback: yfinance intraday
         try:
@@ -277,7 +493,7 @@ class LiveDataService:
     def get_live_news(self, ticker: str, market: str = "SP500") -> Dict:
         """
         Fetch latest news headlines for a ticker.
-        Tries: Finnhub → NewsAPI → yfinance → Demo fallback
+        Priority: FMP → Finnhub → NewsAPI → yfinance → Demo fallback.
         """
         cache_key = f"news_{ticker}"
         if cache_key in self._news_cache:
@@ -287,30 +503,73 @@ class LiveDataService:
 
         articles = []
 
-        # 1) Finnhub company news
-        if self.finnhub_key:
+        # 1) FMP stock news
+        if self.fmp.available:
+            try:
+                articles = self._fmp_news(ticker)
+            except Exception:
+                pass
+
+        # 2) Finnhub company news
+        if not articles and self.finnhub_key:
             try:
                 articles = self._finnhub_news(ticker)
             except Exception:
                 pass
 
-        # 2) NewsAPI
+        # 3) NewsAPI
         if not articles and self.news_api_key:
             try:
                 articles = self._newsapi_search(ticker)
             except Exception:
                 pass
 
-        # 3) yfinance news
+        # 4) yfinance news
         if not articles:
             try:
                 articles = self._yfinance_news(ticker, market)
             except Exception:
                 pass
 
-        # 4) Fallback demo
+        # 5) Fallback demo
         if not articles:
             articles = self._demo_news(ticker)
+
+        result = {
+            "ticker": ticker,
+            "article_count": len(articles),
+            "articles": articles[:20],
+            "timestamp": datetime.utcnow().isoformat(),
+            "_ts": time.time(),
+        }
+        self._news_cache[cache_key] = result
+        return result
+
+    def _fmp_news(self, ticker: str) -> List[Dict]:
+        """Fetch stock news from FMP."""
+        api_key = self.fmp.get_key()
+        if not api_key:
+            return []
+        self._rate_limit("fmp")
+        url = f"{FMP_BASE}/stock_news?tickers={ticker}&limit=20&apikey={api_key}"
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if not data or not isinstance(data, list):
+            return []
+
+        return [
+            {
+                "title": item.get("title", ""),
+                "summary": item.get("text", ""),
+                "source": item.get("site", ""),
+                "url": item.get("url", ""),
+                "published_at": item.get("publishedDate", ""),
+                "image": item.get("image", ""),
+            }
+            for item in data[:20]
+        ]
 
         result = {
             "ticker": ticker,
@@ -417,6 +676,67 @@ class LiveDataService:
             }
             for h in headlines
         ]
+
+    # ═══════════════════════════════════════════════════════
+    #  FMP HISTORICAL DATA (5-year max on free tier)
+    # ═══════════════════════════════════════════════════════
+
+    def get_fmp_historical(
+        self, ticker: str, period: str = "5y"
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch daily historical OHLCV from FMP.
+        Free tier supports up to 5 years of data.
+        Returns DataFrame with columns: [Open, High, Low, Close, Volume]
+        """
+        api_key = self.fmp.get_key()
+        if not api_key:
+            return None
+        self._rate_limit("fmp")
+
+        # Map period string to approximate date range
+        period_days = {
+            "1mo": 30, "3mo": 90, "6mo": 180,
+            "1y": 365, "2y": 730, "3y": 1095,
+            "5y": 1825, "max": 1825,  # cap at 5y for free tier
+        }
+        days = period_days.get(period, 1825)
+        from_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        to_date = datetime.now().strftime("%Y-%m-%d")
+
+        url = (
+            f"{FMP_BASE}/historical-price-full/{ticker}"
+            f"?from={from_date}&to={to_date}&apikey={api_key}"
+        )
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        historical = data.get("historical", [])
+        if not historical:
+            return None
+
+        df = pd.DataFrame(historical)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index("date").sort_index()
+
+        # Rename to standard OHLCV columns
+        col_map = {
+            "open": "Open", "high": "High", "low": "Low",
+            "close": "Close", "volume": "Volume",
+        }
+        df = df.rename(columns=col_map)
+
+        required = ["Open", "High", "Low", "Close", "Volume"]
+        for c in required:
+            if c not in df.columns:
+                return None
+
+        return df[required]
+
+    def get_fmp_key_status(self) -> Dict:
+        """Return FMP key rotation status with call counts."""
+        return self.fmp.get_status()
 
     # ═══════════════════════════════════════════════════════
     #  UTILITIES
