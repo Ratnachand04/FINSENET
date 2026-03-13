@@ -136,31 +136,6 @@
       </div>
     </div>
 
-    <!-- FMP API Key Configuration -->
-    <div class="card" style="margin-top:18px;border-color:var(--gold);">
-      <div onclick="document.getElementById('fmpPanel').style.display=document.getElementById('fmpPanel').style.display==='none'?'block':'none'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-        <label style="font-family:var(--font-display);font-size:11px;letter-spacing:2px;color:var(--gold);cursor:pointer;">
-          🔑 FMP API KEYS (Financial Modeling Prep)
-        </label>
-        <span style="color:var(--gold);font-size:12px;" id="fmpKeyCount">0 keys</span>
-      </div>
-      <div id="fmpPanel" style="display:none;margin-top:14px;">
-        <p style="color:#8899AA;font-size:11px;margin-bottom:10px;">
-          Free tier: 250 calls/day/key • 5 years historical data • Multiple keys for rotation
-        </p>
-        <div class="input-group" style="margin-bottom:8px;">
-          <textarea id="fmpKeysInput" rows="3" placeholder="Paste FMP API keys (one per line or comma-separated)" style="width:100%;background:var(--bg-card);border:1px solid rgba(0,255,255,0.2);color:var(--text-primary);font-family:var(--font-data);font-size:12px;padding:10px;border-radius:6px;resize:vertical;"></textarea>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <button class="quick-btn" onclick="saveFmpKeys()" style="padding:6px 18px;background:var(--gold);color:#000;font-weight:bold;">
-            SAVE KEYS
-          </button>
-          <span id="fmpStatus" style="font-size:11px;color:#8899AA;"></span>
-        </div>
-        <div id="fmpKeyStatus" style="margin-top:10px;font-size:11px;color:#8899AA;"></div>
-      </div>
-    </div>
-
     <div style="text-align:center;margin-top:32px;">
       <button class="btn-primary" onclick="goToScreen(2)">
         SELECT MARKETS &nbsp;→
@@ -450,7 +425,79 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════
+     SCREEN 6 — API KEYS MANAGER
+     ═══════════════════════════════════════════ -->
+<div class="screen" id="screen6">
+  <div style="max-width:1080px;margin:0 auto;">
+    <div class="api-keys-hero">
+      <div>
+        <div class="api-keys-kicker">SYSTEM CONFIGURATION</div>
+        <h2 class="api-keys-title">API KEYS MANAGEMENT</h2>
+        <p class="api-keys-subtitle">Manage Financial Modeling Prep keys, monitor daily usage, and keep rotation healthy.</p>
+      </div>
+      <div class="api-keys-count">
+        <div class="label">ACTIVE FMP KEYS</div>
+        <div class="value" data-fmp-count>0 keys</div>
+      </div>
+    </div>
+
+    <div class="api-keys-grid">
+      <div class="api-keys-card">
+        <div class="panel-title">🔑 FMP API KEYS (Financial Modeling Prep)</div>
+        <div class="api-keys-hint">Free tier: 250 calls/day/key • 5 years historical data • Multiple keys for rotation</div>
+
+        <div class="input-group" style="margin-bottom:12px;">
+          <label>KEYS INPUT</label>
+          <textarea id="fmpKeysInput" rows="4" placeholder="Paste FMP API keys (one per line or comma-separated)" style="width:100%;background:var(--bg-card);border:1px solid rgba(0,255,255,0.2);color:var(--text-primary);font-family:var(--font-data);font-size:12px;padding:12px;border-radius:8px;resize:vertical;"></textarea>
+        </div>
+        <div class="api-keys-actions">
+          <button class="quick-btn api-save-btn" onclick="saveFmpKeys()">SAVE KEYS</button>
+          <span id="fmpStatus" class="api-keys-status">Ready to save.</span>
+        </div>
+
+        <div class="api-keys-metrics">
+          <div class="api-metric">
+            <div class="label">DAILY BUDGET</div>
+            <div class="value" id="fmpBudgetTotal">—</div>
+          </div>
+          <div class="api-metric">
+            <div class="label">USED TODAY</div>
+            <div class="value" id="fmpBudgetUsed">—</div>
+          </div>
+          <div class="api-metric">
+            <div class="label">REMAINING</div>
+            <div class="value" id="fmpBudgetRemaining">—</div>
+          </div>
+          <div class="api-metric">
+            <div class="label">SOURCE</div>
+            <div class="value" id="fmpSource">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="api-keys-card">
+        <div class="panel-title">📡 KEY HEALTH &amp; ROTATION</div>
+        <div class="api-keys-hint">Usage distribution helps avoid rate limits and throttling.</div>
+        <div id="fmpKeyStatus" class="api-key-health"></div>
+        <div class="api-keys-footnote">Tip: keep at least 2 active keys to enable rotation.</div>
+      </div>
+    </div>
+
+    <div class="action-btns" style="margin-top:20px;">
+      <button class="btn-secondary" onclick="goToScreen(1)">← BACK TO HOME</button>
+      <button class="btn-primary" onclick="goToScreen(4)">OPEN DASHBOARD →</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- end .app-container -->
+
+<button class="api-keys-fab" onclick="goToScreen(6)" title="API Keys Manager" aria-label="Open API Keys Manager">
+  <span class="gear">⚙</span>
+  <span class="label">API KEYS</span>
+  <span class="count" data-fmp-count>0 keys</span>
+</button>
 
 
 <!-- ══════════════════════════════════════════════════════════════════════════

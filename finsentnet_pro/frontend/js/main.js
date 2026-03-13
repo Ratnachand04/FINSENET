@@ -238,6 +238,23 @@ function setHorizon(btn,val){
 /* ═══════════════════════════════════════════
    FMP API KEY MANAGEMENT
    ═══════════════════════════════════════════ */
+function setFmpCountText(count, suffix){
+  const label = count + ' key' + (count!==1 ? 's' : '') + (suffix || '');
+  document.querySelectorAll('[data-fmp-count]').forEach(el=>{ el.textContent = label; });
+}
+
+function setFmpBudgetStats(total, used, source){
+  const remaining = total!=null && used!=null ? Math.max(0, total - used) : null;
+  const totalEl = document.getElementById('fmpBudgetTotal');
+  const usedEl = document.getElementById('fmpBudgetUsed');
+  const remEl = document.getElementById('fmpBudgetRemaining');
+  const srcEl = document.getElementById('fmpSource');
+  if(totalEl) totalEl.textContent = total!=null ? total.toLocaleString() : '—';
+  if(usedEl) usedEl.textContent = used!=null ? used.toLocaleString() : '—';
+  if(remEl) remEl.textContent = remaining!=null ? remaining.toLocaleString() : '—';
+  if(srcEl) srcEl.textContent = source || '—';
+}
+
 function saveFmpKeys(){
   const raw = document.getElementById('fmpKeysInput').value.trim();
   if(!raw){ document.getElementById('fmpStatus').textContent='⚠ No keys entered'; return; }
@@ -252,7 +269,7 @@ function saveFmpKeys(){
   }).then(r=>r.json()).then(d=>{
     if(d.status==='ok'){
       const cnt = d.sources?.fmp_keys_count||keys.length;
-      document.getElementById('fmpKeyCount').textContent=cnt+' key'+(cnt>1?'s':'');
+      setFmpCountText(cnt);
       document.getElementById('fmpStatus').textContent=`✅ ${cnt} key(s) saved · ${d.sources?.fmp_daily_budget||cnt*250} calls/day`;
       document.getElementById('fmpKeysInput').value='';
       loadFmpKeyStatus();
@@ -262,7 +279,8 @@ function saveFmpKeys(){
   }).catch(e=>{
     document.getElementById('fmpStatus').textContent='⚠ Server offline — keys saved locally';
     localStorage.setItem('fmp_keys',JSON.stringify(keys));
-    document.getElementById('fmpKeyCount').textContent=keys.length+' key'+(keys.length>1?'s':'')+' (local)';
+    setFmpCountText(keys.length, ' (local)');
+    setFmpBudgetStats(keys.length * 250, 0, 'Local');
   });
 }
 
@@ -271,7 +289,12 @@ function loadFmpKeyStatus(){
     const src=d.sources||{};
     if(src.fmp){
       const cnt=src.fmp_keys_count||0;
-      document.getElementById('fmpKeyCount').textContent=cnt+' key'+(cnt>1?'s':'');
+      setFmpCountText(cnt);
+      if(src.fmp_status){
+        setFmpBudgetStats(src.fmp_status.total_budget, src.fmp_status.total_used, 'Server');
+      } else {
+        setFmpBudgetStats(src.fmp_daily_budget || cnt * 250, null, 'Server');
+      }
       if(src.fmp_status && src.fmp_status.keys){
         let html='<div style="margin-top:6px;">';
         src.fmp_status.keys.forEach(k=>{
@@ -288,11 +311,23 @@ function loadFmpKeyStatus(){
         html+=`<div style="margin-top:6px;color:var(--gold);">Total: ${src.fmp_status.total_used}/${src.fmp_status.total_budget} calls used today</div>`;
         html+='</div>';
         document.getElementById('fmpKeyStatus').innerHTML=html;
+      } else {
+        document.getElementById('fmpKeyStatus').innerHTML='<div style="margin-top:6px;">No key usage telemetry from server.</div>';
       }
     } else {
-      document.getElementById('fmpKeyCount').textContent='0 keys';
+      setFmpCountText(0);
+      setFmpBudgetStats(null, null, 'Server');
+      document.getElementById('fmpKeyStatus').innerHTML='<div style="margin-top:6px;">No server keys configured.</div>';
     }
-  }).catch(()=>{});
+  }).catch(()=>{
+    const localRaw = localStorage.getItem('fmp_keys');
+    const localKeys = localRaw ? JSON.parse(localRaw) : [];
+    setFmpCountText(localKeys.length, localKeys.length ? ' (local)' : '');
+    setFmpBudgetStats(localKeys.length * 250, 0, 'Local');
+    document.getElementById('fmpKeyStatus').innerHTML=
+      localKeys.length ? '<div style="margin-top:6px;">Using locally saved keys. Server offline.</div>' :
+      '<div style="margin-top:6px;">Server offline and no local keys found.</div>';
+  });
 }
 
 // Load FMP status on page load
