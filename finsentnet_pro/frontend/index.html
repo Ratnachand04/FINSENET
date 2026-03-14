@@ -87,6 +87,13 @@
     <div class="subtitle">N E T &nbsp; P R O</div>
     <div class="tagline">AI-Powered Quantitative Trading Intelligence</div>
 
+    <div class="model-structure-strip">
+      <div class="chip"><span class="k">TEXT</span><span class="v">BiLSTM + Attention</span></div>
+      <div class="chip"><span class="k">PRICE</span><span class="v">CNN + LSTM</span></div>
+      <div class="chip"><span class="k">FUSION</span><span class="v">Cross-Modal Attention</span></div>
+      <div class="chip"><span class="k">HEADS</span><span class="v">Direction + Return</span></div>
+    </div>
+
     <div class="card glow-pulse">
       <div class="input-group">
         <label>💰 TOTAL INVESTMENT CAPITAL</label>
@@ -434,25 +441,42 @@
       <div>
         <div class="api-keys-kicker">SYSTEM CONFIGURATION</div>
         <h2 class="api-keys-title">API KEYS MANAGEMENT</h2>
-        <p class="api-keys-subtitle">Manage Financial Modeling Prep keys, monitor daily usage, and keep rotation healthy.</p>
+        <p class="api-keys-subtitle">Manage provider keys (FMP, Finnhub, NewsAPI, Alpha Vantage, and custom providers) with runtime visibility.</p>
       </div>
       <div class="api-keys-count">
-        <div class="label">ACTIVE FMP KEYS</div>
+        <div class="label">ACTIVE PRIMARY KEYS</div>
         <div class="value" data-fmp-count>0 keys</div>
       </div>
     </div>
 
     <div class="api-keys-grid">
       <div class="api-keys-card">
-        <div class="panel-title">🔑 FMP API KEYS (Financial Modeling Prep)</div>
-        <div class="api-keys-hint">Free tier: 250 calls/day/key • 5 years historical data • Multiple keys for rotation</div>
+        <div class="panel-title">🔑 PROVIDER API KEYS</div>
+        <div class="api-keys-hint">Use one or many keys per provider. Keys are accepted as line-separated or comma-separated values.</div>
+
+        <div class="input-group" style="margin-bottom:12px;">
+          <label>PROVIDER</label>
+          <select id="providerSelect">
+            <option value="fmp">Financial Modeling Prep (fmp)</option>
+            <option value="finnhub">Finnhub (finnhub)</option>
+            <option value="news_api">NewsAPI (news_api)</option>
+            <option value="alpha_vantage">Alpha Vantage (alpha_vantage)</option>
+            <option value="polygon">Polygon (polygon)</option>
+            <option value="custom">Custom Provider...</option>
+          </select>
+        </div>
+
+        <div class="input-group" id="customProviderWrap" style="margin-bottom:12px;display:none;">
+          <label>CUSTOM PROVIDER ID</label>
+          <input id="customProviderInput" type="text" placeholder="e.g. tiingo, twelve_data, openai" />
+        </div>
 
         <div class="input-group" style="margin-bottom:12px;">
           <label>KEYS INPUT</label>
-          <textarea id="fmpKeysInput" rows="4" placeholder="Paste FMP API keys (one per line or comma-separated)" style="width:100%;background:var(--bg-card);border:1px solid rgba(0,255,255,0.2);color:var(--text-primary);font-family:var(--font-data);font-size:12px;padding:12px;border-radius:8px;resize:vertical;"></textarea>
+          <textarea id="fmpKeysInput" rows="4" placeholder="Paste API keys for selected provider" style="width:100%;background:var(--bg-card);border:1px solid rgba(0,255,255,0.2);color:var(--text-primary);font-family:var(--font-data);font-size:12px;padding:12px;border-radius:8px;resize:vertical;"></textarea>
         </div>
         <div class="api-keys-actions">
-          <button class="quick-btn api-save-btn" onclick="saveFmpKeys()">SAVE KEYS</button>
+          <button class="quick-btn api-save-btn" onclick="saveFmpKeys()">SAVE PROVIDER KEYS</button>
           <span id="fmpStatus" class="api-keys-status">Ready to save.</span>
         </div>
 
@@ -478,10 +502,22 @@
 
       <div class="api-keys-card">
         <div class="panel-title">📡 KEY HEALTH &amp; ROTATION</div>
-        <div class="api-keys-hint">Usage distribution helps avoid rate limits and throttling.</div>
+        <div class="api-keys-hint">Usage distribution and configured providers help avoid rate limits and outages.</div>
         <div id="fmpKeyStatus" class="api-key-health"></div>
+        <div id="providerStatus" class="api-provider-grid"></div>
         <div class="api-keys-footnote">Tip: keep at least 2 active keys to enable rotation.</div>
       </div>
+    </div>
+
+    <div class="api-keys-card" style="margin-top:16px;">
+      <div class="panel-title">🧠 MODEL STRUCTURE &amp; PROFILE</div>
+      <div class="api-keys-hint">Switch runtime profile and inspect active model architecture metadata.</div>
+      <div class="api-keys-actions" style="margin-bottom:10px;">
+        <select id="modelProfileSelect" style="min-width:260px;"></select>
+        <button class="quick-btn" onclick="saveModelProfile()">SET ACTIVE PROFILE</button>
+        <span id="modelProfileStatus" class="api-keys-status">Loading profiles...</span>
+      </div>
+      <div id="modelStructureMeta" class="model-structure-meta"></div>
     </div>
 
     <div class="action-btns" style="margin-top:20px;">

@@ -24,6 +24,7 @@ const state = {
   livePriceTimer: null,
   currentTimeframe: '1D',
   trainedTickers: {},  // {ticker: true} cache
+  modelRegistry: null,
 };
 
 /* ═══════════════════════════════════════════
@@ -236,8 +237,22 @@ function setHorizon(btn,val){
 }
 
 /* ═══════════════════════════════════════════
-   FMP API KEY MANAGEMENT
+   API KEY + MODEL SETTINGS
    ═══════════════════════════════════════════ */
+function getSelectedProvider(){
+  const base = document.getElementById('providerSelect')?.value || 'fmp';
+  if(base !== 'custom') return base;
+  const custom = (document.getElementById('customProviderInput')?.value || '').trim().toLowerCase();
+  return custom || 'custom';
+}
+
+function toggleCustomProviderInput(){
+  const sel = document.getElementById('providerSelect');
+  const wrap = document.getElementById('customProviderWrap');
+  if(!sel || !wrap) return;
+  wrap.style.display = sel.value === 'custom' ? 'block' : 'none';
+}
+
 function setFmpCountText(count, suffix){
   const label = count + ' key' + (count!==1 ? 's' : '') + (suffix || '');
   document.querySelectorAll('[data-fmp-count]').forEach(el=>{ el.textContent = label; });
@@ -261,32 +276,66 @@ function saveFmpKeys(){
   const keys = raw.split(/[\n,]+/).map(k=>k.trim()).filter(k=>k.length>5);
   if(keys.length===0){ document.getElementById('fmpStatus').textContent='⚠ Invalid keys'; return; }
 
+  const provider = getSelectedProvider();
+  if(provider === 'custom'){
+    document.getElementById('fmpStatus').textContent='⚠ Enter a custom provider id';
+    return;
+  }
+
   document.getElementById('fmpStatus').textContent='Saving...';
+  const payload = { providers: { [provider]: keys } };
+  if(provider === 'fmp') payload.fmp_keys = keys;
+  if(provider === 'finnhub') payload.finnhub = keys[0];
+  if(provider === 'alpha_vantage') payload.alpha_vantage = keys[0];
+  if(provider === 'news_api') payload.news_api = keys[0];
+
   fetch(`${API_BASE}/live/settings/api-keys`,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({fmp_keys:keys})
+    body:JSON.stringify(payload)
   }).then(r=>r.json()).then(d=>{
     if(d.status==='ok'){
-      const cnt = d.sources?.fmp_keys_count||keys.length;
+      const providers = d.sources?.providers || {};
+      const cnt = providers.fmp?.keys_count ?? d.sources?.fmp_keys_count ?? keys.length;
       setFmpCountText(cnt);
-      document.getElementById('fmpStatus').textContent=`✅ ${cnt} key(s) saved · ${d.sources?.fmp_daily_budget||cnt*250} calls/day`;
+      document.getElementById('fmpStatus').textContent=`✅ ${keys.length} key(s) saved for ${provider}`;
       document.getElementById('fmpKeysInput').value='';
       loadFmpKeyStatus();
     } else {
       document.getElementById('fmpStatus').textContent='⚠ '+JSON.stringify(d);
     }
   }).catch(e=>{
-    document.getElementById('fmpStatus').textContent='⚠ Server offline — keys saved locally';
-    localStorage.setItem('fmp_keys',JSON.stringify(keys));
-    setFmpCountText(keys.length, ' (local)');
-    setFmpBudgetStats(keys.length * 250, 0, 'Local');
+    document.getElementById('fmpStatus').textContent='⚠ Server offline — provider keys saved locally';
+    localStorage.setItem(`provider_keys_${provider}`,JSON.stringify(keys));
+    if(provider === 'fmp'){
+      setFmpCountText(keys.length, ' (local)');
+      setFmpBudgetStats(keys.length * 250, 0, 'Local');
+    }
   });
+}
+
+function renderProviderStatus(providers){
+  const container = document.getElementById('providerStatus');
+  if(!container) return;
+  const entries = Object.entries(providers || {});
+  if(entries.length===0){
+    container.innerHTML = '<div class="api-provider-item"><div class="name">No providers</div><div class="val">0 configured</div></div>';
+    return;
+  }
+  container.innerHTML = entries
+    .sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([name,meta])=>{
+      const n = Number(meta.keys_count || 0);
+      return `<div class="api-provider-item"><div class="name">${name}</div><div class="val">${n} key(s)</div></div>`;
+    })
+    .join('');
 }
 
 function loadFmpKeyStatus(){
   fetch(`${API_BASE}/live/settings/api-keys`).then(r=>r.json()).then(d=>{
     const src=d.sources||{};
+    const providers = src.providers || {};
+    renderProviderStatus(providers);
     if(src.fmp){
       const cnt=src.fmp_keys_count||0;
       setFmpCountText(cnt);
@@ -320,18 +369,97 @@ function loadFmpKeyStatus(){
       document.getElementById('fmpKeyStatus').innerHTML='<div style="margin-top:6px;">No server keys configured.</div>';
     }
   }).catch(()=>{
-    const localRaw = localStorage.getItem('fmp_keys');
+    const localRaw = localStorage.getItem('provider_keys_fmp');
     const localKeys = localRaw ? JSON.parse(localRaw) : [];
     setFmpCountText(localKeys.length, localKeys.length ? ' (local)' : '');
     setFmpBudgetStats(localKeys.length * 250, 0, 'Local');
+    renderProviderStatus({ fmp: { keys_count: localKeys.length } });
     document.getElementById('fmpKeyStatus').innerHTML=
       localKeys.length ? '<div style="margin-top:6px;">Using locally saved keys. Server offline.</div>' :
       '<div style="margin-top:6px;">Server offline and no local keys found.</div>';
   });
 }
 
+function renderModelStructureMeta(profile){
+  const el = document.getElementById('modelStructureMeta');
+  if(!el || !profile){
+    if(el) el.innerHTML = '';
+    return;
+  }
+  const rows = [
+    ['Profile', profile.display_name || profile.profile_id],
+    ['Version', profile.version || '—'],
+    ['Model Class', profile.model_class || '—'],
+    ['Price Window', profile.price_window || '—'],
+    ['Price Features', profile.price_features || '—'],
+    ['Text Tokens', profile.text_tokens || '—'],
+    ['Heads', (profile.output_heads || []).join(', ') || '—'],
+    ['Checkpoint', profile.checkpoint_pattern || '—'],
+  ];
+  el.innerHTML = rows.map(([k,v])=>
+    `<div class="model-meta-item"><div class="label">${k}</div><div class="value">${v}</div></div>`
+  ).join('');
+}
+
+function loadModelProfiles(){
+  const select = document.getElementById('modelProfileSelect');
+  const status = document.getElementById('modelProfileStatus');
+  if(!select || !status) return;
+
+  fetch(`${API_BASE.replace('/api','')}/api/system/model-profiles`)
+    .then(r=>r.json())
+    .then(d=>{
+      const mr = d.model_registry || {};
+      const profiles = mr.profiles || [];
+      const active = mr.active_profile_id;
+      state.modelRegistry = mr;
+      select.innerHTML = profiles.map(p=>
+        `<option value="${p.profile_id}" ${p.profile_id===active?'selected':''}>${p.display_name} (${p.profile_id})</option>`
+      ).join('');
+      status.textContent = active ? `Active profile: ${active}` : 'Profiles loaded';
+      renderModelStructureMeta(mr.active_profile || profiles[0]);
+    })
+    .catch(()=>{
+      status.textContent = 'Model profile API unavailable';
+    });
+}
+
+function saveModelProfile(){
+  const select = document.getElementById('modelProfileSelect');
+  const status = document.getElementById('modelProfileStatus');
+  if(!select || !status) return;
+  const profileId = select.value;
+  if(!profileId){
+    status.textContent = 'Select a profile first';
+    return;
+  }
+  status.textContent = 'Updating profile...';
+  fetch(`${API_BASE.replace('/api','')}/api/system/model-profiles/active`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ profile_id: profileId }),
+  }).then(r=>r.json()).then(d=>{
+    if(d.status === 'ok'){
+      status.textContent = `✅ Active profile set: ${profileId}`;
+      const mr = d.model_registry || {};
+      state.modelRegistry = mr;
+      renderModelStructureMeta(mr.active_profile || null);
+    } else {
+      status.textContent = '⚠ Failed to update profile';
+    }
+  }).catch(()=>{
+    status.textContent = '⚠ Failed to update profile';
+  });
+}
+
 // Load FMP status on page load
-document.addEventListener('DOMContentLoaded',()=>{ setTimeout(loadFmpKeyStatus,1000); });
+document.addEventListener('DOMContentLoaded',()=>{
+  const providerSelect = document.getElementById('providerSelect');
+  if(providerSelect) providerSelect.addEventListener('change', toggleCustomProviderInput);
+  toggleCustomProviderInput();
+  setTimeout(loadFmpKeyStatus,1000);
+  setTimeout(loadModelProfiles,1200);
+});
 
 /* ═══════════════════════════════════════════
    SCREEN 2 — MARKET SELECTOR
