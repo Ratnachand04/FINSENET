@@ -4,7 +4,7 @@ FINSENT NET PRO — Live Data & Prediction Routes
 """
 
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Union
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -42,6 +42,7 @@ class ApiKeyRequest(BaseModel):
     alpha_vantage: Optional[str] = None
     finnhub: Optional[str] = None
     news_api: Optional[str] = None
+    providers: Optional[Dict[str, Union[str, List[str]]]] = None
 
 
 # ═══════════════════════════════════════════════════════
@@ -243,6 +244,7 @@ async def configure_api_keys(request: ApiKeyRequest):
         alpha_vantage=request.alpha_vantage,
         finnhub=request.finnhub,
         news_api=request.news_api,
+        provider_keys=request.providers,
     )
 
     return {
@@ -255,6 +257,7 @@ async def configure_api_keys(request: ApiKeyRequest):
             "alpha_vantage": bool(_live_service.alpha_vantage_key),
             "finnhub": bool(_live_service.finnhub_key),
             "news_api": bool(_live_service.news_api_key),
+            "providers": _live_service.get_provider_key_status(),
         },
     }
 
@@ -274,6 +277,7 @@ async def get_api_key_status():
             "alpha_vantage": bool(_live_service.alpha_vantage_key),
             "finnhub": bool(_live_service.finnhub_key),
             "news_api": bool(_live_service.news_api_key),
+            "providers": _live_service.get_provider_key_status(),
             "yfinance": True,  # always available
         },
     }

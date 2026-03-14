@@ -28,7 +28,7 @@ import logging
 import requests
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from datetime import datetime, timedelta, date
 
 logger = logging.getLogger("finsent.live_data")
@@ -151,6 +151,13 @@ class LiveDataService:
         self.finnhub_key = os.environ.get("FINNHUB_API_KEY", "")
         self.news_api_key = os.environ.get("NEWS_API_KEY", "")
 
+        # Provider-agnostic runtime key store.
+        self.provider_keys: Dict[str, List[str]] = self._load_provider_keys_from_env()
+        self._set_provider_keys("fmp", fmp_keys)
+        self._set_provider_keys("alpha_vantage", self.alpha_vantage_key)
+        self._set_provider_keys("finnhub", self.finnhub_key)
+        self._set_provider_keys("news_api", self.news_api_key)
+
         # Rate limiting
         self._last_request_time: Dict[str, float] = {}
         self._min_interval = {
@@ -175,17 +182,74 @@ class LiveDataService:
         alpha_vantage: Optional[str] = None,
         finnhub: Optional[str] = None,
         news_api: Optional[str] = None,
+        provider_keys: Optional[Dict[str, Union[str, List[str]]]] = None,
     ):
         """Set API keys at runtime."""
         if fmp_keys:
             self.fmp.add_keys(fmp_keys)
+            self._set_provider_keys("fmp", fmp_keys)
         if alpha_vantage:
             self.alpha_vantage_key = alpha_vantage
+            self._set_provider_keys("alpha_vantage", alpha_vantage)
         if finnhub:
             self.finnhub_key = finnhub
+            self._set_provider_keys("finnhub", finnhub)
         if news_api:
             self.news_api_key = news_api
+            self._set_provider_keys("news_api", news_api)
+
+        if provider_keys:
+            for provider, keys in provider_keys.items():
+                normalized = self._normalize_provider_name(provider)
+                self._set_provider_keys(normalized, keys)
+                if normalized == "fmp":
+                    fmp_list = self.provider_keys.get("fmp", [])
+                    self.fmp.keys = list(dict.fromkeys([k.strip() for k in fmp_list if k.strip()]))
+                elif normalized == "alpha_vantage":
+                    keys_list = self.provider_keys.get("alpha_vantage", [])
+                    self.alpha_vantage_key = keys_list[0] if keys_list else ""
+                elif normalized == "finnhub":
+                    keys_list = self.provider_keys.get("finnhub", [])
+                    self.finnhub_key = keys_list[0] if keys_list else ""
+                elif normalized == "news_api":
+                    keys_list = self.provider_keys.get("news_api", [])
+                    self.news_api_key = keys_list[0] if keys_list else ""
         logger.info("API keys updated")
+
+    def get_provider_key_status(self) -> Dict:
+        providers: Dict[str, Dict[str, Union[bool, int]]] = {}
+        for provider, keys in self.provider_keys.items():
+            providers[provider] = {
+                "configured": len(keys) > 0,
+                "keys_count": len(keys),
+            }
+        return providers
+
+    def _normalize_provider_name(self, provider: str) -> str:
+        return provider.strip().lower().replace("-", "_").replace(" ", "_")
+
+    def _set_provider_keys(self, provider: str, keys: Union[str, List[str], None]):
+        normalized = self._normalize_provider_name(provider)
+        if keys is None:
+            return
+        if isinstance(keys, str):
+            key_list = [k.strip() for k in keys.split(",") if k.strip()]
+        else:
+            key_list = [str(k).strip() for k in keys if str(k).strip()]
+        self.provider_keys[normalized] = list(dict.fromkeys(key_list))
+
+    def _load_provider_keys_from_env(self) -> Dict[str, List[str]]:
+        providers: Dict[str, List[str]] = {}
+        for env_name, env_value in os.environ.items():
+            if not env_value:
+                continue
+            if env_name.endswith("_API_KEY") or env_name.endswith("_API_KEYS"):
+                provider = env_name.replace("_API_KEYS", "").replace("_API_KEY", "")
+                provider = self._normalize_provider_name(provider)
+                keys = [k.strip() for k in env_value.split(",") if k.strip()]
+                if keys:
+                    providers[provider] = keys
+        return providers
 
     # ═══════════════════════════════════════════════════════
     #  REAL-TIME PRICE
