@@ -23,6 +23,7 @@ from data_pipeline.news_sentiment_engine import NewsSentimentEngine
 from data_pipeline.regime_detector import RegimeDetector
 from data_pipeline.data_aligner import DataAligner
 from models.finsentnet_core import FinSentNetCore
+from models.model_registry import ModelRegistry
 from models.signal_generator import SignalGenerator
 from portfolio.kelly_sizer import KellySizer
 from portfolio.portfolio_optimizer import PortfolioOptimizer
@@ -40,6 +41,7 @@ from api.routes import signals as signal_routes
 from api.routes import portfolio as portfolio_routes
 from api.routes import training as training_routes
 from api.routes import live as live_routes
+from api.routes import system as system_routes
 from api.websocket_handler import websocket_endpoint
 
 # ── Logging ──────────────────────────────────────────────
@@ -76,6 +78,7 @@ regime_detector = RegimeDetector()
 aligner = DataAligner()
 model = FinSentNetCore()
 model.eval()
+model_registry = ModelRegistry()
 signal_gen = SignalGenerator()
 kelly = KellySizer()
 optimizer = PortfolioOptimizer()
@@ -96,6 +99,7 @@ signal_routes.init(signal_gen, fetcher, indicators)
 portfolio_routes.init(optimizer, risk_engine, allocator, kelly)
 training_routes.init(trainer, predictor)
 live_routes.init(live_data_service, predictor, trainer)
+system_routes.init(model_registry)
 
 # ── Register routers ─────────────────────────────────────
 app.include_router(market_routes.router)
@@ -104,6 +108,7 @@ app.include_router(signal_routes.router)
 app.include_router(portfolio_routes.router)
 app.include_router(training_routes.router)
 app.include_router(live_routes.router)
+app.include_router(system_routes.router)
 
 
 # ── Core endpoints ───────────────────────────────────────
@@ -124,6 +129,7 @@ async def health_check():
         "status": "FINSENT NET PRO is operational",
         "version": "2.0.0",
         "model": "FINSENT Core v1.0",
+        "active_model_profile": model_registry.get_active().profile_id,
         "timestamp": datetime.utcnow().isoformat(),
         "modules": {
             "data_fetcher": True,
